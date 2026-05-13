@@ -1,8 +1,10 @@
+#![no_std]
+
 mod errors;
 mod storage;
 
 use errors::ContractError;
-use soroban_sdk::{contract, contractimpl, Address, Bytes, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, Env};
 use storage::{ADMIN, ANCHORS, BALANCES, INITIALIZED, PAUSED, TOKEN, VERIFIED};
 
 #[contract]
@@ -21,14 +23,6 @@ impl ShadowPay {
 
         if env.storage().instance().has(&INITIALIZED) {
             return Err(ContractError::AlreadyInitialized);
-        }
-
-        if admin == Address::from_contract_id(&env, &Bytes::new(&env)) {
-            return Err(ContractError::ZeroAddress);
-        }
-
-        if token == Address::from_contract_id(&env, &Bytes::new(&env)) {
-            return Err(ContractError::ZeroAddress);
         }
 
         env.storage().instance().set(&INITIALIZED, &true);
@@ -57,7 +51,7 @@ impl ShadowPay {
             return Err(ContractError::InvalidProof);
         }
 
-        let mut verified = env.storage().persistent();
+        let verified = env.storage().persistent();
         verified.set(&(VERIFIED, recipient.clone()), &true);
 
         Ok(())
@@ -80,14 +74,14 @@ impl ShadowPay {
             return Err(ContractError::InvalidAmount);
         }
 
-        let mut verified = env.storage().persistent();
+        let verified = env.storage().persistent();
         if !verified.get::<_, bool>(&(VERIFIED, recipient.clone())).unwrap_or(false) {
             return Err(ContractError::RecipientNotVerified);
         }
 
         // In production, this would call the token contract to transfer USDC
         // For now, we track balances in contract storage
-        let mut balances = env.storage().persistent();
+        let balances = env.storage().persistent();
         let recipient_balance = balances
             .get::<_, i128>(&(BALANCES, recipient.clone()))
             .unwrap_or(0);
@@ -165,7 +159,7 @@ impl ShadowPay {
             .ok_or(ContractError::UnauthorizedCaller)?;
 
         admin.require_auth();
-        let mut anchors = env.storage().persistent();
+        let anchors = env.storage().persistent();
         anchors.set(&(ANCHORS, anchor_id), &true);
         Ok(())
     }
@@ -174,17 +168,19 @@ impl ShadowPay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{Bytes, Env};
+    use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
+    use soroban_sdk::{Address, Bytes, Env, IntoVal};
 
     #[test]
     fn test_initialize() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
-        let result = ShadowPay::initialize(env.clone(), deployer.clone(), admin, token);
+        let result = ShadowPay::initialize(env.clone(), deployer.clone(), admin.clone(), token.clone());
         assert!(result.is_ok());
 
         // Second initialization should fail
@@ -195,11 +191,13 @@ mod tests {
     #[test]
     fn test_verify_proof_and_transfer() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
-        let recipient = Address::random(&env);
-        let sender = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sender = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin, token).unwrap();
 
@@ -226,10 +224,12 @@ mod tests {
     #[test]
     fn test_invalid_proof_rejected() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
-        let recipient = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let recipient = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin, token).unwrap();
 
@@ -243,11 +243,13 @@ mod tests {
     #[test]
     fn test_unverified_recipient_blocked() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
-        let recipient = Address::random(&env);
-        let sender = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sender = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin, token).unwrap();
 
@@ -259,11 +261,13 @@ mod tests {
     #[test]
     fn test_invalid_amount_rejected() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
-        let recipient = Address::random(&env);
-        let sender = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let sender = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin, token).unwrap();
 
@@ -279,9 +283,11 @@ mod tests {
     #[test]
     fn test_pause_unpause() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin.clone(), token).unwrap();
 
@@ -290,12 +296,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Try to transfer while paused
-        let recipient = Address::random(&env);
-        let sender = Address::random(&env);
+        let recipient = Address::generate(&env);
+        let sender = Address::generate(&env);
         let proof = Bytes::from_slice(&env, &[1u8; 32]);
         ShadowPay::verify_proof(env.clone(), recipient.clone(), proof).unwrap();
 
-        let result = ShadowPay::transfer(env.clone(), sender, recipient, 1000);
+        let result = ShadowPay::transfer(env.clone(), sender.clone(), recipient.clone(), 1000);
         assert_eq!(result, Err(ContractError::ContractPaused));
 
         // Unpause
@@ -310,9 +316,11 @@ mod tests {
     #[test]
     fn test_register_anchor() {
         let env = Env::default();
-        let deployer = Address::random(&env);
-        let admin = Address::random(&env);
-        let token = Address::random(&env);
+        env.mock_all_auths();
+        
+        let deployer = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
         ShadowPay::initialize(env.clone(), deployer, admin.clone(), token).unwrap();
 
@@ -321,7 +329,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Settle with registered anchor
-        let recipient = Address::random(&env);
+        let recipient = Address::generate(&env);
         let result = ShadowPay::settle(env, recipient, 1);
         assert!(result.is_ok());
     }
