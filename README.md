@@ -25,6 +25,7 @@ This platform is designed for banks targeting underserved markets, fintech teams
 - [How It Works](#how-it-works)
 - [Project Structure](#project-structure)
 - [Setup Instructions](#setup-instructions)
+- [Stellar Integration](#stellar-integration)
 - [Testing](#testing)
 - [Deployment](#deployment)
 - [Architecture](#architecture)
@@ -167,6 +168,63 @@ TOKEN_CONTRACT="..."          # USDC token contract address
 ```
 
 > ⚠️ Add `.env` to your `.gitignore`. Never commit secret keys.
+
+---
+
+## Stellar Integration
+
+### Overview
+
+ShadowPay integrates with Stellar's Soroban smart contract platform to enable privacy-preserving payments. The contract interacts with:
+
+- **Soroban Host**: Executes ZK-proof verification and state management
+- **Stellar Token Contract**: Manages USDC transfers (SEP-41 standard)
+- **Anchors**: Enable real-world settlement (e.g., MoneyGram, Wise)
+
+### Contract Deployment
+
+The contract is deployed as a WASM binary to Stellar's Soroban network:
+
+```bash
+# Build WASM
+cargo build --target wasm32-unknown-unknown --release
+
+# Deploy to testnet
+stellar contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/shadow_pay.wasm \
+  --network testnet \
+  --source $DEPLOYER_SECRET_KEY
+```
+
+### Token Integration
+
+The contract uses Stellar's native token interface (SEP-41) to:
+
+1. **Transfer USDC** - Call the token contract's `transfer` function
+2. **Check Balances** - Query token contract for recipient balances
+3. **Approve Spending** - Request authorization for token transfers
+
+### Anchor Settlement
+
+After a confidential transfer, recipients can settle funds via anchors:
+
+```rust
+// Settle via anchor (e.g., MoneyGram)
+settle(recipient, anchor_id)
+```
+
+Anchors handle:
+- Off-chain fund delivery
+- KYC verification (optional, already done via ZK-proof)
+- Currency conversion
+- Compliance reporting
+
+### Network Configuration
+
+| Network | RPC URL | Passphrase |
+|---------|---------|-----------|
+| Testnet | `https://soroban-testnet.stellar.org:443` | `Test SDF Network ; September 2015` |
+| Mainnet | `https://rpc.mainnet.stellar.org:443` | `Public Global Stellar Network ; September 2015` |
 
 ---
 
