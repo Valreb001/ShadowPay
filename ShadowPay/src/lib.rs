@@ -168,8 +168,8 @@ impl ShadowPay {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
-    use soroban_sdk::{Address, Bytes, Env, IntoVal};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Address, Bytes, Env};
 
     #[test]
     fn test_initialize() {
